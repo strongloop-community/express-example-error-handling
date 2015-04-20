@@ -1,16 +1,16 @@
-# Asynchronous routing and error handling in Express
+# Asynchronous error handling in Express
 
-> tldr; Callbacks have a [lousy error-handling story][1].  Promises [do not][2].  Marry the built-in router error handling in Express with promises, you significantly lower the chances of an uncaught exception.  Promises are native ES6, can be to used with generators, and ES7 proposals like [`async/await`][3] through transpilers like [Babel][4].
+> tldr; Callbacks have a [lousy error-handling story][1].  Promises [are better][2].  Marry the built-in error handling in Express with promises and significantly lower the chances of an uncaught exception.  Promises are native ES6, can be used with generators, and ES7 proposals like [`async/await`][3] through compilers like [Babel][4].
 
-This article focuses on effective ways to propagate errors to [error- handling middleware][3] in Express.  I am assuming you *are* propagating errors there. If you are not, it will save you a lot of code duplication to do so.
+This article focuses on effective ways to capture and handle errors using [error-handling middleware][3] in Express[^B].
 
-First, we will look at what you get from Express out of the box and then we will look at using promises, promise generators and ES7 `async/await` to simplify things further.
+First, let's look at what Express handles out of the box and then we will look at using promises, promise generators and ES7 `async/await` to simplify things further.
 
 ## Express has built-in synchronous handling
 By default, Express will catch any exception thrown within the initial *synchronous* execution of a route and pass it along to the next error-handling middleware:
 
 ```js
-app.get(function (req, res) {
+app.get('/', function (req, res) {
   throw new Error('oh no!')
 })
 app.use(function (err, req, res, next) {
@@ -21,7 +21,7 @@ app.use(function (err, req, res, next) {
 Yet in asynchronous code, Express cannot catch exceptions as you've lost your stack once you have entered a callback:
 
 ```js
-app.get(function (req, res) {
+app.get('/', function (req, res) {
   queryDb(function (er, data) {
     if (er) throw er
   })
@@ -31,10 +31,10 @@ app.use(function (err, req, res, next) {
 })
 ```
 
-For these cases you use the `next` function to propagate errors:
+For these cases, use the `next` function to propagate errors:
 
 ```js
-app.get(function (req, res, next) {
+app.get('/', function (req, res, next) {
   queryDb(function (err, data) {
     if (err) return next(err)
     // handle data
@@ -54,14 +54,14 @@ app.use(function (err, req, res, next) {
 Still, this isn't bulletproof. There are two problems with this approach:
 
 1. You must explicitly handle *every* `error` argument.
-2. Implicit exceptions aren't handled like trying to access a property that isn't available on the `data` object.
+2. Implicit exceptions aren't handled (like trying to access a property that isn't available on the `data` object).
 
 ## Asynchronous error propagation with promises
 
-With [promises][2], we can handle any exception (explicit and implicit) within our asynchronous code blocks like Express does for us in synchronous code blocks.  All we need is to add `.catch(next)` to the end of our promise chains.
+[Promises][2] handle any exception (explicit and implicit) within asynchronous code blocks (inside `then`) like Express does for us in synchronous code blocks.  Just add `.catch(next)` to the end of promise chains.
 
 ```js
-app.get(function (req, res, next) {
+app.get('/', function (req, res, next) {
   // do some sync stuff
   queryDb()
     .then(function (data) {
@@ -80,15 +80,15 @@ app.use(function (err, req, res, next) {
 
 Now all errors asynchronous and synchronous get propagated to the error middleware. Hurrah!
 
-Well almost.  Promises are a decent asynchronous primitive but are still verbose. Despite the welcomed error propagation, we still have to check to make sure we are ending our promise chains with `.catch(next)`.  Let's enhance using promise generators.
+Well, almost.  Promises are a decent asynchronous primitive, but they are kinda verbose despite the welcomed error propagation.  Let's fix this using promise generators.
 
 ## Cleaner code with generators
 
-If you are using [io.js][6] or Node `>=0.12`, we can improve on this workflow using native promise generators[^A].  For this I'm going to pull a utility that makes promise generators called `Bluebird.coroutine`.
+If you use [io.js][6] or Node `>=0.12`, you can improve on this workflow using native [generators][14][^A].  For this, let's use a helper to make promise generators called `Bluebird.coroutine`.
 
-> This example uses [bluebird][7] but promise generators exist in all the major promise libraries.
+> This example uses [bluebird][7], but promise generators exist in all the major promise libraries
 
-First we need to teach Express about promise generators by creating a little `wrap` function:
+First, let's make Express compatible with promise generators by creating a little `wrap` function:
 
 ```js
 var Promise = require('bluebird')
@@ -107,10 +107,10 @@ The `wrap` function:
 3. Returns a normal Express route function
 4. When this function executes, it will call the coroutine, catch any errors, and pass them to `next`.
 
-This boilerplate should go away with Express 5 [custom routers][8] but write it once and keep it as a utility.  With it, we can write route functions like this:
+This `wrap` boilerplate hopefully will go away with Express 5 [custom routers][8] but write it once and keep it as a utility.  With it, we can write route functions like this:
 
 ```js
-app.get(wrap(function *(req, res) {
+app.get('/', wrap(function *(req, res) {
   var data = yield queryDb()
   // handle data
   var csv = yield makeCsv(data)
@@ -121,22 +121,24 @@ app.use(function (err, req, res, next) {
 })
 ```
 
-That is pretty clean but if you are feeling daring we can clean up a little more using the ES7 `async/await` proposal.
+This is pretty clean and reads well. All normal control structures (like `if/else`) work the same regardless if asynchronously or synchronous executed.  Just remember to `yield` the promises.
+
+Let's look next at the ES7 `async/await` proposal and clean things up even more.
 
 ## Using ES7 async/await
 
-The [`async/await` proposal][3] allows "yielding" of promises like promise generators but as a native construct that works nicely with ES6 classes, arrow functions and object literal extensions.
+The [`async/await` proposal][3] behaves just like a promise generator but it can be used in more places (like class methods and arrow functions).
 
-Until there is Express 5, we still need a `wrap` function but it's simpler as we don't need `Bluebird.coroutine` or generators.  Below is semantically the same as the previous `wrap` function but with some ES6 goodness:
+We still need a `wrap` function but it's simpler as we don't need `Bluebird.coroutine` or generators.  Below is semantically the same as the previous `wrap` function, written in ES6:
 
 ```js
-let wrap = fn => (...args) => fn(...args).catch(next)
+let wrap = fn => (...args) => fn(...args).catch(args[2])
 ```
 
-Then we can make routes like this:
+Then, we make routes like this:
 
 ```js
-app.get(wrap(async function (req, res) {
+app.get('/', wrap(async function (req, res) {
   let data = await queryDb()
   // handle data
   let csv = await makeCsv(data)
@@ -147,10 +149,10 @@ app.get(wrap(async function (req, res) {
 Or with arrow functions:
 
 ```js
-app.get(wrap(async (req, res) => { ... }))
+app.get('/', wrap(async (req, res) => { ... }))
 ```
 
-Now, to run this code, you will need the [Babel][4] JavaScript compiler.  There are a variety of ways you can use Babel with Node but to keep things simple and straightforward for the purposes of this tutorial, install the `babel-node` command by running:
+Now, to run this code, you will need the [Babel][4] JavaScript compiler.  There are many ways to use Babel with Node, but to keep things simple, install the `babel-node` command by running:
 
 ```sh
 npm i babel -g
@@ -166,10 +168,10 @@ babel-node --stage 0 myapp.js
 
 ## Throw me a party!
 
-With error handling covered both synchronously and asynchronously you can develop Express code differently.  Mainly, **DO** use `throw`.  The intent of `throw` is clear.  If you use throw it will bypass execution until it hits a `catch`.  In other words, it will behave just like `throw` in synchronous code.  You can use `throw` and `try/catch` meaningfully again with promises, promise generators, and `async/await`:
+With error handling covered both synchronously and asynchronously you can develop Express code differently.  Mainly, **DO** use `throw`.  The intent of `throw` is clear.  If you use `throw` it will bypass execution until it hits a `catch`.  In other words, it will behave just like `throw` in synchronous code.  You can use `throw` and `try/catch` meaningfully again with promises, promise generators, and `async/await`:
 
 ```js
-app.get(wrap(async (req, res) => {
+app.get('/', wrap(async (req, res) => {
   if (!req.params.id) {
     throw new BadRequestError('Missing Id')
   }
@@ -183,17 +185,27 @@ app.get(wrap(async (req, res) => {
 }))
 ```
 
-Also **DO** use [custom error classes][9] like `BadRequestError` as it makes sorting errors out easier within the error middleware.
+Also **DO** use [custom error classes][9] like `BadRequestError` as it makes sorting errors out easier:
+
+```js
+app.use(function (err, req, res, next) {
+  if (err instanceof BadRequestError) {
+    res.status(400)
+    return res.send(err.message)
+  }
+  ...
+})
+```
 
 ## Caveats
 
-There are two caveats with this approach that must be mentioned:
+There are two caveats with this approach:
 
 1. You must have all your asynchronous code return promises (except emitters).  Raw callbacks simply [don't have the facilities][2] for this to work.  This is getting easier as promises are legit now in ES6.  If a particular library does not return promises, it's trivial to convert using a helper function like `Bluebird.promisifyAll`.
 2. Event emitters (like streams) can still cause uncaught exceptions.  So make sure you are handling the `error` event properly.
 
 ```js
-app.get(wrap(async (req, res, next) => {
+app.get('/', wrap(async (req, res, next) => {
   let company = await getCompanyById(req.query.id)
   let stream = getLogoStreamById(company.id)
   stream.on('error', next).pipe(res)
@@ -202,7 +214,7 @@ app.get(wrap(async (req, res, next) => {
 
 ## Alternatives to promises
 
-Besides using the promise abstraction to capture errors you can also use generators and thunks with [co][10].  See [co-express][11] for a `wrap` function.
+An alternative to promises is to capture errors using generators and [thunks][12]. One way to accomplish this is using [co][10] and a `wrap` function like [co-express][11].
 
 [1]: http://strongloop.com/strongblog/robust-node-applications-error-handling/
 [2]: http://strongloop.com/strongblog/promises-in-node-js-with-q-an-alternative-to-callbacks/
@@ -215,4 +227,8 @@ Besides using the promise abstraction to capture errors you can also use generat
 [9]: http://dailyjs.com/2014/01/30/exception-error/
 [10]: https://github.com/tj/co
 [11]: https://github.com/mciparelli/co-express
-[^A]: Generators can also be supported using a JavaScript compiler like Babel. I find the `async/await` more compelling if I am already using a compiler.
+[12]: http://en.wikipedia.org/wiki/Thunk
+[13]: https://facebook.github.io/regenerator/
+[14]: https://strongloop.com/strongblog/how-to-generators-node-js-yield-use-cases/
+[^A]: [Faux generators][13] work in older versions of Node using a JavaScript compiler like Babel. I personally find the `async/await` syntax more compelling if I am already using a compiler.
+[^B]: I am assuming you *are* propagating errors there. If you are not, it will save you maintenance time and code duplication to do so.

@@ -1,0 +1,27 @@
+{
+  "name": "express-error-handling",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "promises": "node promises",
+    "generators": "node generators",
+    "async-await": "babel-node --stage 0 asyncAwait",
+    "lint": "eslint *.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@bitbucket.org:wavded/express-error-handling.git"
+  },
+  "keywords": [],
+  "author": "Marc Harter <wavded@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "babel": "^5.1.10",
+    "bluebird": "^2.9.24",
+    "express": "^4.12.3"
+  },
+  "devDependencies": {
+    "babel-eslint": "^3.0.1",
+    "eslint": "^0.19.0"
+  }
+}
