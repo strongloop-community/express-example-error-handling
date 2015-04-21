@@ -2,7 +2,7 @@
 
 > tldr; Callbacks have a [lousy error-handling story][1].  Promises [are better][2].  Marry the built-in error handling in Express with promises and significantly lower the chances of an uncaught exception.  Promises are native ES6, can be used with generators, and ES7 proposals like [`async/await`][3] through compilers like [Babel][4].
 
-This article focuses on effective ways to capture and handle errors using [error-handling middleware][3] in Express[^B].
+This article focuses on effective ways to capture and handle errors using [error-handling middleware][3] in Express[^B].  The article also includes a sample repository of these concepts on [GitHub][15].
 
 First, let's look at what Express handles out of the box and then we will look at using promises, promise generators and ES7 `async/await` to simplify things further.
 
@@ -230,5 +230,6 @@ An alternative to promises is to capture errors using generators and [thunks][12
 [12]: http://en.wikipedia.org/wiki/Thunk
 [13]: https://facebook.github.io/regenerator/
 [14]: https://strongloop.com/strongblog/how-to-generators-node-js-yield-use-cases/
+[15]: https://github.com/strongloop-community/express-example-error-handling
 [^A]: [Faux generators][13] work in older versions of Node using a JavaScript compiler like Babel. I personally find the `async/await` syntax more compelling if I am already using a compiler.
 [^B]: I am assuming you *are* propagating errors there. If you are not, it will save you maintenance time and code duplication to do so.
